@@ -4,7 +4,7 @@ from pathlib import Path
 import sys
 from typing import Any, Callable, Dict, Optional, Set, Tuple, Type, Union, List
 import sysconfig
-
+import traceback
 import numpy as np
 
 from pykokkos.core.fusion import fuse_workunit_kwargs_and_params, Future, Tracer, TracerOperation
@@ -126,7 +126,7 @@ class Runtime:
         :param initial_value: the initial value of the accumulator
         :returns: the result of the operation (None for parallel_for)
         """
-
+      
         if self.is_debug(policy.space):
             if operation is None:
                 raise RuntimeError("ERROR: operation cannot be None for Debug")
@@ -147,7 +147,16 @@ class Runtime:
 
         if self.fusion_strategy is not None:
             future = Future()
-            self.tracer.log_operation(future, name, policy, workunit, operation, parser, metadata.name, **kwargs)
+            trace = traceback.extract_stack()
+            max_idx = -1 * len(trace)
+            called_from = None
+
+            for i in range(-1, max_idx -1, -1):
+                if "supreme-journey/examples/" in trace[i].filename:
+                    called_from = (workunit.__name__, trace[i].filename, trace[i].lineno)
+                    break;
+        
+            self.tracer.log_operation(future, name, policy, workunit, operation, parser, metadata.name, called_from, **kwargs)
             return future
 
         return self.execute_workunit(name, policy, workunit, operation, parser, **kwargs)
@@ -208,11 +217,21 @@ class Runtime:
 
         :param data: the future or view corresponding to the data that needs to be updated
         """
-
         assert self.fusion_strategy is not None
 
         operations: List[TracerOperation] = self.tracer.get_operations(data)
         operations = self.tracer.fuse(operations, self.fusion_strategy)
+        if len(operations): 
+            print("[PYK FLUSH_DATA]: ", operations)
+            op_count = 0
+            for f_op in operations:
+                total_called_froms = f_op.called_from
+                if not isinstance(total_called_froms, List):
+                    total_called_froms = [total_called_froms]
+                for called_from in total_called_froms:
+                    name, filename, lineno = called_from
+                    print("[fused-{}]:".format(op_count), name, filename, lineno)
+                op_count += 1
 
         for op in operations:
             result = self.execute_workunit(op.name, op.policy, op.workunit, op.operation, op.parser, **op.args)
@@ -223,12 +242,22 @@ class Runtime:
         """
         Flush all operations saved in the trace
         """
-
         if self.fusion_strategy is None:
             assert len(self.tracer.operations) == 0
             return
 
         operations: List[TracerOperation] = self.tracer.fuse(list(self.tracer.operations), self.fusion_strategy)
+        print("[PYK FLUSH_TRACE]: ", operations)
+        op_count = 0
+
+        for f_op in operations:
+            total_called_froms = f_op.called_from
+            if not isinstance(total_called_froms, List):
+                total_called_froms = [total_called_froms]
+            for called_from in total_called_froms:
+                name, filename, lineno = called_from
+                print("[fused-{}]:".format(op_count), name, filename, lineno)
+            op_count += 1
 
         for op in operations:
             result = self.execute_workunit(op.name, op.policy, op.workunit, op.operation, op.parser, **op.args)

@@ -46,6 +46,7 @@ class TracerOperation:
     entity_name: str
     args: Dict[str, Any]
     dependencies: Set[DataDependency]
+    called_from: Optional[Tuple]
 
     def __hash__(self) -> int:
         return self.op_id
@@ -89,6 +90,7 @@ class Tracer:
         operation: str,
         parser: Parser,
         entity_name: str,
+        called_from,
         **kwargs
     ) -> None:
         """
@@ -111,7 +113,7 @@ class Tracer:
         access_modes: Dict[str, AccessMode]
         dependencies, access_modes = self.get_data_dependencies(kwargs, AST)
 
-        tracer_op = TracerOperation(self.op_id, future, name, policy, workunit, operation, parser, entity_name, dict(kwargs), dependencies)
+        tracer_op = TracerOperation(self.op_id, future, name, policy, workunit, operation, parser, entity_name, dict(kwargs), dependencies, called_from)
         self.op_id += 1
 
         self.update_output_data_operations(kwargs, access_modes, tracer_op, future, operation)
@@ -279,7 +281,7 @@ class Tracer:
         names: List[str] = []
         policy: RangePolicy = operations[0].policy
         workunits: List[Callable[..., None]] = []
-
+        called_froms = []
         # The last operation determines the type of the fused
         # operation since it can be a reduce
         operation: str = operations[-1].operation
@@ -295,6 +297,7 @@ class Tracer:
             names.append(op.name if op.name is not None else op.workunit.__name__)
             workunits.append(op.workunit)
             parsers.append(op.parser)
+            called_froms.append(op.called_from)
             args[f"args_{index}"] = op.args
             dependencies.update(op.dependencies)
 
@@ -305,7 +308,7 @@ class Tracer:
             # Avoid long names
             fused_name = "_".join(names[:5]) + hashlib.md5(("".join(names)).encode()).hexdigest()
 
-        return TracerOperation(None, future, fused_name, policy, workunits, operation, parsers, fused_name, args, dependencies)
+        return TracerOperation(None, future, fused_name, policy, workunits, operation, parsers, fused_name, args, dependencies, called_froms)
 
     def get_data_dependencies(self, kwargs: Dict[str, Any], AST: ast.FunctionDef) -> Tuple[Set[DataDependency], Dict[str, AccessMode]]:
         """
