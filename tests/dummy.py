@@ -1,5 +1,8 @@
 import pykokkos as pk
 from mypy import api
+import mypy.main as main
+import mypy.build as build
+from mypy.visitor import NodeVisitor
 
 @pk.workunit
 def y_init(i, y_view):
@@ -20,14 +23,23 @@ def yAx(j, acc, cols, y_view, x_view, A_view):
     acc += y_view[j] * temp2
 
 workunit_str = """
-def yAx(j, acc, cols, y_view, x_view, A_view):
+
+def yAx(j: int, acc: int, cols: int, y_view: List, x_view: List, A_view: List):
     temp2 = 0
-    reveal_type(temp2)
     for i in range(cols):
         temp2 += A_view[j * cols + i] * x_view[i]
 
     acc += y_view[j] * temp2
 """
+example_str = """
+
+def yAx(j: int):
+    x = 2
+    reveal_type(x)
+    return x + j
+
+"""
+
 
 def run() -> None:
     N: int = 5# Rows
@@ -61,11 +73,40 @@ def run() -> None:
 
 
 def infer_types() -> None:
-    command = ["-c", workunit_str]
+
+    # run type checking using MyPy Api
+    command = ["-c", example_str]
     result = api.run(command)
-    print(result[0])
-    print(result[1])
-    print(result[2])
+    print(result[0]) # Normal report
+    print(result[1]) # Error report
+    print(result[2]) # Exit Status
+
+    # we actually want to be able to infer a particular variable
+    build_source, options = main.process_options(["-c", example_str])
+    options.preserve_asts = True
+    options.fine_grained_incremental = True
+    options.ignore_missing_imports = True
+    options.export_types = True
+
+    result = build.build(build_source, options)
+    print(result.graph['__main__'].tree.names['yAx'].node.body.body)
+    print()
+    # visitor = type_visitor.TypeVisitor
+    # visitor.visit(result.graph['__main__'].tree.names['yAx'].node)
+
+    # print(result.types[result.graph['__main__'].tree.names['yAx'].node])
+    # print(result.graph['__main__'].tree.names['yAx'].node.body.body)
+    for node in result.graph['__main__'].tree.names['yAx'].node.body.body:
+        print(dir(node))
+        print(node)
+        for val in node.lvalues:
+            print(val)
+            try:
+                print(result.types[val])
+            except:
+                print("Failed to find result")
+            break
+
 
 if __name__ == "__main__":
     infer_types()
