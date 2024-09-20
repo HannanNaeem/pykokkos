@@ -2,7 +2,8 @@ import pykokkos as pk
 from mypy import api
 import mypy.main as main
 import mypy.build as build
-from mypy.visitor import NodeVisitor
+from mypy.lookup import lookup_fully_qualified
+from mypy.nodes import AssignmentStmt
 
 @pk.workunit
 def y_init(i, y_view):
@@ -35,7 +36,7 @@ example_str = """
 
 def yAx(j: int):
     x = 2
-    reveal_type(x)
+    x + j
     return x + j
 
 """
@@ -83,29 +84,48 @@ def infer_types() -> None:
 
     # we actually want to be able to infer a particular variable
     build_source, options = main.process_options(["-c", example_str])
+    # don't let the AST flush/clear
     options.preserve_asts = True
+    # don't cache
     options.fine_grained_incremental = True
     options.ignore_missing_imports = True
+    # export entire dict of inferred types: dict[parse_tree_nodes, types]
+    # the keys are always NameExpr nodes or Func etc but never stmt node
     options.export_types = True
+    # visit unannotated nodes as well
+    options.check_untyped_defs = True
 
     result = build.build(build_source, options)
-    print(result.graph['__main__'].tree.names['yAx'].node.body.body)
-    print()
+
+    # below is the function body node
+    # print(result.graph['__main__'].tree.names['yAx'].node.body.body)
+
+    # print()
+
+    # TODO @Hannan
+    # Lets try to harness the built in visitor(s)
     # visitor = type_visitor.TypeVisitor
     # visitor.visit(result.graph['__main__'].tree.names['yAx'].node)
 
-    # print(result.types[result.graph['__main__'].tree.names['yAx'].node])
-    # print(result.graph['__main__'].tree.names['yAx'].node.body.body)
+    # A workunit should be a function type
+    print(result.graph['__main__'].tree.names['yAx'].type)
+    # print the tree
+    print(result.graph['__main__'].tree.names['yAx'].node.body)
+    # printing out type for the first and only lvalue for the first Stmt (assignment stmt) in body
+    # print(result.types[result.graph['__main__'].tree.names['yAx'].node.body.body[0].lvalues[0]])
+
+
+    # for now lets say we are interested in Assignment statements (that can be definitions/redefinitions)
+    # we want to get those annotations.
+    print("\nInferred types:")
     for node in result.graph['__main__'].tree.names['yAx'].node.body.body:
-        print(dir(node))
-        print(node)
-        for val in node.lvalues:
-            print(val)
-            try:
-                print(result.types[val])
-            except:
-                print("Failed to find result")
-            break
+        # We can also get the node from the fully qualified name (but this is a SymbolTableNode)
+        # print(lookup_fully_qualified("__main__.yAx", result.files, raise_on_missing=True).node)
+
+        if isinstance(node, AssignmentStmt):
+            # get type
+            print(node.lvalues[0].name, "->", result.types[node.lvalues[0]])
+            print()
 
 
 if __name__ == "__main__":
