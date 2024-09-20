@@ -27,6 +27,7 @@ workunit_str = """
 
 def yAx(j: int, acc: int, cols: int, y_view: List, x_view: List, A_view: List):
     temp2 = 0
+    temp3 = j + 1.0
     for i in range(cols):
         temp2 += A_view[j * cols + i] * x_view[i]
 
@@ -125,7 +126,6 @@ def infer_types() -> None:
         if isinstance(node, AssignmentStmt):
             # get type
             print(node.lvalues[0].name, "->", result.types[node.lvalues[0]])
-            print()
 
     # For pykokkos we want:
     """
