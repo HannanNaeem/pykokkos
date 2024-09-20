@@ -76,14 +76,14 @@ def run() -> None:
 def infer_types() -> None:
 
     # run type checking using MyPy Api
-    command = ["-c", example_str]
+    command = ["-c", workunit_str]
     result = api.run(command)
     print(result[0]) # Normal report
     print(result[1]) # Error report
     print(result[2]) # Exit Status
 
     # we actually want to be able to infer a particular variable
-    build_source, options = main.process_options(["-c", example_str])
+    build_source, options = main.process_options(["-c", workunit_str])
     # don't let the AST flush/clear
     options.preserve_asts = True
     # don't cache
@@ -102,7 +102,7 @@ def infer_types() -> None:
 
     # print()
 
-    # TODO @Hannan
+    # TODO 
     # Lets try to harness the built in visitor(s)
     # visitor = type_visitor.TypeVisitor
     # visitor.visit(result.graph['__main__'].tree.names['yAx'].node)
@@ -127,6 +127,18 @@ def infer_types() -> None:
             print(node.lvalues[0].name, "->", result.types[node.lvalues[0]])
             print()
 
+    # For pykokkos we want:
+    """
+        - Annotations in the args. This serves as an anchor to propagate type information down
+            - These annotations must be copied over from pykokkos parse tree to mypy parse tree
+            - Or we regenerate python source code for workunit with the args_type_inference and feed
+                it to Mypy
+        - Node visitor to visit assignment/relevant statements
+        - The main problem here is this seems wasteful. Why maintain two different ASTs just to infer types,
+            and copy the date in-between them.
+        - It might be worth, just doing simple static analysis on the Pykokkos parse tree itself - given the
+            the limited flexibility of calls we can make inside a workunit.
+    """
 
 if __name__ == "__main__":
     infer_types()
